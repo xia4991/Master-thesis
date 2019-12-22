@@ -1,0 +1,1243 @@
+---
+title: "exemple data"
+output: html_document
+---
+
+usefull comands for python
+
+repl_python()
+import random
+
+random.seed(212)
+features, target = make_blobs(n_samples = 50, n_features = 5, centers = 4, cluster_std = 0.65, shuffle = True)
+
+
+
+#Functions used
+
+```{r}
+#function: remove zero varience data
+Return.Zero.Variance.Rows = function(mat){
+  rowVars <- apply(mat, 1, var);
+  isConstant <-(rowVars <= 0.01);
+  return(isConstant);
+}
+ 
+#function: Keep columns as specified in colList (logicals). 
+Keep.Rows = function(mat, rowList) { 
+	return(mat[rowList,]); 
+}
+
+#keep common patients
+
+keep.common <- function(data){
+  common.patient <- intersect(colnames(data[[1]]), colnames(data[[2]]))
+  common.patient <- intersect(common.patient, colnames(data[[3]]))
+  data[[1]] <- data[[1]][,common.patient]
+  data[[2]] <- data[[2]][,common.patient]
+  data[[3]] <- data[[3]][,common.patient]
+  return(data)
+}
+
+
+#function that remove rows that have variance < than "variance" variable
+#arguments: data - list of matrix
+#           variance - variance threshold
+
+remove.Zero.varience <- function(data, variance){
+  
+  #remove zero varience data
+  Return.Zero.Variance.Rows = function(mat, variance){
+    rowVars <- apply(mat, 1, var);
+    isConstant <-(rowVars <= variance);
+    return(isConstant);
+  }
+  #Keep columns as specified in colList (logicals). 
+  Keep.Rows = function(mat, rowList) { 
+  	return(mat[rowList,]); 
+  }
+  
+  for (view in 1:length(data)){
+    view
+    zerorowlist <- Return.Zero.Variance.Rows(data[[view]], variance);
+    data[[view]]<-Keep.Rows(data[[view]], !zerorowlist);
+  }
+  return(data)
+}
+
+
+
+makeSimData <- function (n_views = 3, n_features = 100, n_samples = 50, n_factors = 5, 
+    likelihood = "gaussian", DZ = NULL)
+{
+    if (!all(likelihood %in% c("gaussian", "bernoulli", "poisson"))) 
+        stop("Liklihood not implemented: Use either gaussian, bernoulli or poisson")
+    if (length(likelihood) == 1) 
+        likelihood <- rep(likelihood, n_views)
+    if (!length(likelihood) == n_views) 
+        stop("Likelihood needs to be a single string or matching the number of views!")
+    #latent factors
+    
+    if(length(DZ)==0){
+      Z <- matrix(rnorm(n_factors * n_samples, 0, 1), nrow = n_samples, ncol = n_factors)
+    }else{
+      Z <- DZ
+    }
+    
+    
+    theta <- 0.5
+    alpha <- sapply(1:n_factors, function(fc) {
+        active_vw <- sample(1:n_views, 1)
+        alpha_fc <- sample(c(1, 1000), n_views, replace = TRUE)
+        if (all(alpha_fc == 1000)) 
+            alpha_fc[active_vw] <- 1
+        alpha_fc
+    })
+    alpha <- t(alpha)
+    
+    #S- lista matrix de 1 e 0
+    S <- lapply(1:n_views, function(vw) matrix(rbinom(n_features * 
+        n_factors, 1, theta), nrow = n_features, ncol = n_factors))
+    
+    #list of matrix W with normal distribuition, mean=0, and sd = 1/alpha
+    W <- lapply(1:n_views, function(vw) sapply(1:n_factors, function(fc) rnorm(n_features, 
+        0, sqrt(1/alpha[fc, vw]))))
+    tau <- 10
+    
+    
+    mu <- lapply(1:n_views, function(vw) Z %*% t(S[[vw]] * W[[vw]]))
+    
+    
+    data <- lapply(1:n_views, function(vw) {
+        lk <- likelihood[vw]
+        if (lk == "gaussian") {
+            dd <- t(mu[[vw]] + rnorm(length(mu[[vw]]), 0, sqrt(1/tau)))
+        }
+        else if (lk == "poisson") {
+            term <- log(1 + exp(mu[[vw]]))
+            dd <- t(apply(term, 2, function(tt) rpois(length(tt), 
+                tt)))
+        }
+        else if (lk == "bernoulli") {
+            term <- 1/(1 + exp(-mu[[vw]]))
+            dd <- t(apply(term, 2, function(tt) rbinom(length(tt), 
+                1, tt)))
+        }
+        colnames(dd) <- paste0("sample_", 1:ncol(dd))
+        rownames(dd) <- paste0("feature", 1:nrow(dd))
+        dd
+    })
+    names(data) <- paste0("view_", 1:n_views)
+    return(data)
+}
+
+
+```
+
+
+
+
+python for make cluster data
+```{r}
+
+library(reticulate)
+sklearn <- import("sklearn.datasets")  
+py_available(TRUE)
+knitr::knit_engines$set(python = reticulate::eng_python)
+
+```
+
+
+Z:
+number_of_test = 8
+samples_size = [100]
+latents_size = [3,5,10,15]
+cluster_size = [2,3,4,5,6,7,8,9]
+cluster_std = [0.25,0.5,0.75,1,1.25,1.5,1.75,2]
+
+
+
+Y:
+
+```{r}
+
+samples.size <- c(100)
+features.size <- c(20,50,100,500,1000)
+latents.size <- c(3,5,10,15)
+cluster.size <- c(2,3,4,5,6,7,8,9)
+views.size <- c(3)
+
+
+
+
+```
+
+
+
+repl_python()
+```{python}
+
+
+from sklearn.datasets import make_blobs
+from sklearn.cluster import KMeans
+import random
+import math
+import numpy as np
+
+random.seed(212)
+# Make features and targets with 500 samples,
+
+samples_size = [100]
+latents_size = [3,5,10,15]
+cluster_size = [2,3,4,5,6,7,8,9]
+cluster_std = [0.25,0.5,0.75,1,1.25,1.5,1.75,2]
+
+samples_index = np.full((len(samples_size),len(latents_size),len(cluster_size),len(cluster_std)), 0)
+index = 0
+for i in range(0, len(samples_size)):
+  for j in range(0, len(latents_size)):
+    for k in range(0, len(cluster_size)):
+      for l in range(0, len(cluster_std)):
+        samples_index[i,j,k,l] = index
+        index = index + 1
+
+test_samples = list()
+test_labels = list()
+for i in range(0, len(samples_size)):
+  for j in range(0, len(latents_size)):
+    for k in range(0, len(cluster_size)):
+      for l in range(0, len(cluster_std)):
+        data, label = make_blobs(n_samples = samples_size[i], n_features = latents_size[j], centers = cluster_size[k], cluster_std = cluster_std[l], shuffle = True,   random_state=0)
+        test_samples.append(data)
+        test_labels.append(label)
+
+
+
+
+```
+
+
+get python variables
+```{r}
+library(MOFA)
+library(clusterCrit)
+library(factoextra)
+library(NbClust)
+
+
+latent <- py$test_samples
+labels <- py$test_labels
+Z.index <- py$samples_index
+
+#normalization of list of Zt
+for (l in 1:length(latent)){
+  latent[[l]]<- scale(latent[[l]])
+}
+
+#data transformation from Z to Y
+set.seed(1234)
+
+
+samples.size <- c(100)
+features.size <- c(20,50,100,500,1000)
+latents.size <- c(3,5,10,15)
+cluster.size <- c(2,3,4,5,6,7,8,9)
+views.size <- c(3)
+cluster.std <- c(0.25,0.5,0.75,1,1.25,1.5,1.75,2)
+
+Y.index <- array(0, dim=c(length(samples.size),length(latents.size),length(cluster.size),length(cluster.std),length(views.size),length(features.size)))
+Y.samples <- list()
+Y.labels <- list()
+
+index <- 1
+for(i in 1:length(samples.size)){
+  for(j in 1:length(latents.size)){
+    for(k in 1:length(cluster.size)){
+      for(l in 1:length(cluster.std)){
+        for(m in 1:1){            #length(views.size)
+          for(n in 1:length(features.size)){      #length(features.size)
+            if(features.size[[n]] > latents.size[[j]]){
+              print(index)
+              Y.samples[[index]] <- makeSimData(n_views = 3, n_features = features.size[[n]], n_samples = samples.size[[i]], n_factors = latents.size[[j]], likelihood = "gaussian", DZ = latent[[Z.index[i,j,k,l]+1]])
+              Y.index[i,j,k,l,m,n] <- index
+              Y.labels[[index]] <- labels[[Z.index[i,j,k,l]+1]]
+              index <- index + 1 
+              
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+
+```
+
+
+
+
+```{r message=FALSE, include=FALSE, results='hide'}
+
+save.image("D:/dissertacao/10_19.RData")
+
+```
+
+rm(latent, labels)
+
+
+```{r message=FALSE, include=FALSE, results='hide'}
+library(MOFA)
+
+Mofa.cluster.index <- vector("list", length = length(Y.samples))
+Mofa.real.index <- vector("list", length = length(Y.samples))
+mofa.result <- vector("list", length = length(Y.samples))
+
+
+index <- 1
+for(i in 1:1){       #length(samples.size)
+  for(j in 1:length(latents.size)){       #length(latents.size)
+    for(k in 1:length(cluster.size)){
+      for(l in 1:length(cluster.std)){
+        for(m in 1:1){            #length(views.size)
+          for(n in 1:length(features.size)){      #length(features.size)
+            if(features.size[[n]] > latents.size[[j]]){
+              if(index > 1019){
+  
+  data <- Y.samples[[Y.index[i,j,k,l,m,n]]]
+  MOFAobject <- createMOFAobject(data)
+  MOFAobject
+  plotDataOverview(MOFAobject)
+  
+  TrainOptions <- getDefaultTrainOptions()
+  if(n > 4){
+    TrainOptions$tolerance <- 0.2
+  }
+  TrainOptions
+  ModelOptions <- getDefaultModelOptions(MOFAobject)
+  ModelOptions$numFactors <- 15
+  #ModelOptions$likelihood <- "gaussian"
+  DataOptions <- getDefaultDataOptions()
+  DataOptions
+  TrainOptions$DropFactorThreshold <- 0.03
+  
+  n_inits <- 5
+  MOFAlist <- lapply(seq_len(n_inits), function(it) {
+    TrainOptions$seed <- 2018+ it
+    MOFAobject <- prepareMOFA(MOFAobject, DataOptions = DataOptions, ModelOptions = ModelOptions, TrainOptions = TrainOptions)
+    runMOFA(MOFAobject)
+  })
+
+  compareModels(MOFAlist)
+  compareFactors(MOFAlist)
+  
+  MOFAobject <- selectModel(MOFAlist, plotit = FALSE)
+  save(MOFAobject, file = paste0("D:/dissertacao/resultado1/",Y.index[i,j,k,l,m,n], "_",i,j,k,l,m,n,".Rdata"))
+        
+              }
+              index <- index + 1 
+              print(index)
+  
+       }
+          }
+        }
+      }
+    }
+  }
+}
+
+
+
+save.image("D:/dissertacao/10_21_1.RData")
+
+
+```
+
+
+
+```{r}
+library("clusterCrit")
+library("NbClust")
+library("cluster")
+library("factoextra")
+
+Mofa.cluster.index.sihouette <- vector("list", length = length(Y.samples))
+Mofa.real.index <- vector("list", length = length(Y.samples))
+mofa.result <- vector("list", length = length(Y.samples))
+Mofa.cluster.index.wss <- vector("list", length = length(Y.samples))
+
+Mofa.lf.found <- list()
+Mofa.k.found.sil <- list()
+Mofa.k.found.wss <- list()
+
+
+index <- 1
+for(i in 1:1){       #length(samples.size)
+  for(j in 1:length(latents.size)){       #length(latents.size)
+    for(k in 1:length(cluster.size)){
+      for(l in 1:length(cluster.std)){
+        for(m in 1:1){            #length(views.size)
+          for(n in 1:length(features.size)){      #length(features.size)
+            if(features.size[[n]] > latents.size[[j]]){
+              if(index > 0){
+                load(paste0("D:/dissertacao/resultado1/",Y.index[i,j,k,l,m,n], "_",i,j,k,l,m,n,".Rdata"))
+  latentZmofa <- MOFAobject@Expectations[["Z"]]
+  Mofa.lf.found[[Y.index[i,j,k,l,m,n]]] <- dim(latentZmofa)[2]
+  clusterRef <- as.integer(Y.labels[[Y.index[i,j,k,l,m,n]]]+1)
+  
+  #by silhouette
+  cluster.index <- NbClust(data = latentZmofa, distance = "euclidean", min.nc = 2, max.nc = 10, method = "kmeans", index= "silhouette")
+  Mofa.cluster.index.sihouette[[Y.index[i,j,k,l,m,n]]] <- extCriteria(cluster.index[["Best.partition"]], clusterRef, "all")
+  Mofa.k.found.sil[[Y.index[i,j,k,l,m,n]]] <- cluster.index$Best.nc[[1]]
+  
+  #by real clusters
+  clusterMofa <- kmeans(latentZmofa, cluster.size[[k]], nstart = 25)
+  Mofa.real.index[[Y.index[i,j,k,l,m,n]]] <- extCriteria(clusterMofa$cluster, clusterRef, "all")
+  
+  #by wss
+  nbcluster <- fviz_nbclust(x = latentZmofa,FUNcluster = kmeans, method = 'wss' )
+  n.cluster <- find.k.by.second.derivative(nbcluster$data$y)
+  clusterMofa.wss <- kmeans(latentZmofa, n.cluster, nstart = 25)
+  Mofa.cluster.index.wss[[Y.index[i,j,k,l,m,n]]] <- extCriteria(clusterMofa.wss$cluster, clusterRef, "all")
+  Mofa.k.found.wss[[Y.index[i,j,k,l,m,n]]] <- n.cluster
+  
+              }
+              print(index)
+  
+  index <- index + 1
+  
+  
+       }
+          }
+        }
+      }
+    }
+  }
+}
+
+
+```
+
+
+
+
+i  samples.size <- c(50,100,500)
+m  features.size <- c(20,50,100,500,1000)
+j  latents.size <- c(2,5,10,15)
+k  cluster.size <- c(2,3,4,5,6,7,8,9)
+n  views.size <- c(3)
+l  cluster.std <- c(0.25,0.5,0.75,1,1.25,1.5,1.75,2)
+
+
+
+```{r}
+
+for(a in 1:length(cluster.std)){
+  if(features.size[[n]] > latents.size[[j]]){
+    
+  real.index <- Mofa.real.index[[Y.index[i,j,k,a,m,n]]]
+  wss <- Mofa.cluster.index.wss[[Y.index[i,j,k,a,m,n]]]
+  silhouette <- Mofa.cluster.index.sihouette[[Y.index[i,j,k,a,m,n]]]
+  
+  cluster.index[a,1] <- real.index$precision
+  cluster.index[a,2] <- real.index$recall
+  cluster.index[a,3] <- real.index$jaccard
+  cluster.index[a,4] <- real.index$rand
+  cluster.index[a,5] <- real.index$folkes_mallows
+  
+  silhouette.index[a,1] <- silhouette$precision
+  silhouette.index[a,2] <- silhouette$recall
+  silhouette.index[a,3] <- silhouette$jaccard
+  silhouette.index[a,4] <- silhouette$rand
+  silhouette.index[a,5] <- silhouette$folkes_mallows
+  
+  wss.index[a,1] <- wss$precision
+  wss.index[a,2] <- wss$recall
+  wss.index[a,3] <- wss$jaccard
+  wss.index[a,4] <- wss$rand
+  wss.index[a,5] <- wss$folkes_mallows
+
+
+  }
+}
+```
+
+
+```{r}
+
+
+index <- 1
+
+i <- 1      #samples.size <- c(100)
+j <- 1      #latents.size <- c(2,5,10,15)
+k <- 4      #cluster.size <- c(2,3,4,5,6,7,8,9)
+l <- 1      #cluster.std <- c(0.25,0.5,0.75,1,1.25,1.5,1.75,2)
+m <- 1      #views.size <- c(3)
+n <- 1      #features.size <- c(20,50,100,500,1000)
+
+cluster.index <- matrix(0L, nrow = length(cluster.std), ncol = 5)
+silhouette.index <- matrix(0L, nrow = length(cluster.std), ncol = 5)
+wss.index <- matrix(0L, nrow = length(cluster.std), ncol = 5)
+
+colnames(cluster.index) <- c("precision","recall","jaccard","rand","folkes_mallows")
+rownames(cluster.index) <- paste0("std=", cluster.std[1:length(cluster.std)])
+
+for(j in 1:length(latents.size)){
+  for(n in 1:length(features.size)){
+    for(k in 1:length(cluster.size)){
+      for(a in 1:length(cluster.std)){
+        real.index <- Mofa.real.index[[Y.index[i,j,k,a,m,n]]]
+        wss <- Mofa.cluster.index.wss[[Y.index[i,j,k,a,m,n]]]
+        silhouette <- Mofa.cluster.index.sihouette[[Y.index[i,j,k,a,m,n]]]
+        
+          cluster.index[a,1] <- cluster.index[a,1] + real.index$precision
+          cluster.index[a,2] <- cluster.index[a,2] + real.index$recall
+          cluster.index[a,3] <- cluster.index[a,3] + real.index$jaccard
+          cluster.index[a,4] <- cluster.index[a,4] + real.index$rand
+          cluster.index[a,5] <- cluster.index[a,5] + real.index$folkes_mallows
+          
+          silhouette.index[a,1] <- silhouette.index[a,1] + silhouette$precision
+          silhouette.index[a,2] <- silhouette.index[a,2] + silhouette$recall
+          silhouette.index[a,3] <- silhouette.index[a,3] + silhouette$jaccard
+          silhouette.index[a,4] <- silhouette.index[a,4] + silhouette$rand
+          silhouette.index[a,5] <- silhouette.index[a,5] + silhouette$folkes_mallows
+          
+          wss.index[a,1] <- wss.index[a,1] + wss$precision
+          wss.index[a,2] <- wss.index[a,2] + wss$recall
+          wss.index[a,3] <- wss.index[a,3] + wss$jaccard
+          wss.index[a,4] <- wss.index[a,4] + wss$rand
+          wss.index[a,5] <- wss.index[a,5] + wss$folkes_mallows
+      }
+    }
+  }
+}
+
+
+
+
+print.cluster.index.fig(cluster.index/(4*5*8))
+print.cluster.index.fig(silhouette.index/(4*5*8))
+print.cluster.index.fig(wss.index/(4*5*8))
+
+
+
+
+```
+
+
+
+```{r}
+
+features.lf <- list()
+
+
+for(j in 1:length(latents.size)){
+  features.lf[[j]] <- list()
+  for(n in 1:length(features.size)){
+    features.lf[[j]][[n]] <-list()
+    for(k in 1:length(cluster.size)){
+      for(l in 1:length(cluster.std)){
+        features.lf[[j]][[n]] <- c(features.lf[[j]][[n]], Mofa.lf.found[[Y.index[1,j,k,l,1,n]]])
+        
+      }
+    }
+  }
+}
+
+for(k in 1:length(cluster.size)){
+  for(n in 1:length(features.size)){
+    vec <- unlist(features.lf[[j]][[n]])
+    #geom_bar(vec)
+    print(table(vec))
+    print("----------------")
+}}
+
+```
+
+
+
+  
+```{r}
+k.vs.lf <- list()
+
+
+for(k in 1:length(cluster.size)){
+  k.vs.lf[[k]] <- list()
+  for(j in 1:length(latents.size)){
+    k.vs.lf[[k]][[j]] <-list()
+    for(n in 1:length(features.size)){
+      for(l in 1:length(cluster.std)){
+
+        k.vs.lf[[k]][[j]] <- c(k.vs.lf[[k]][[j]], Mofa.k.found.sil[[Y.index[1,j,k,l,1,n]]])
+        
+      }
+    }
+  }
+}
+
+
+for(k in 1:length(cluster.size)){
+  for(j in 1:length(latents.size)){
+    print(paste("Number of cluster:",cluster.size[[k]], "Number of latents : ", latents.size[[j]]))
+    vec <- unlist(k.vs.lf[[k]][[j]])
+    #geom_bar(vec)
+    print(table(vec))
+    
+}}
+```
+
+
+
+
+
+
+
+```{r}
+
+elbow.values <- c(1.00, 0.53, 0.31, 0.28, 0.26, 0.24, 0.21, 0.20, 0.19, 0.16, 0.16)
+
+
+
+find.k.by.second.derivative <- function(elbow.values){
+  number.of.k <- length(elbow.values)
+  first.derivative <- vector()
+  for(i in 2:number.of.k - 1){
+    first.derivative[[i+1]] <- elbow.values[[i]] - elbow.values[[i+1]]
+  }
+  second.derivative <- vector()
+  for(i in 3:number.of.k-2){
+    second.derivative[[i+2]] <- first.derivative[[i+1]] - first.derivative[[i+2]]
+  }
+  strength <- vector()
+  relative.strength <- vector()
+  
+  
+  dist_to_line <- vector()
+  for(i in 1:number.of.k){
+    dist_to_line[[i]] <- dist2d(c(i,elbow.values[[i]]), c(1,elbow.values[[1]]), c(10,elbow.values[[10]]))
+  }
+  
+  
+  check <- 0
+  for(i in 3:number.of.k-1){
+    if(second.derivative[[i+1]] > first.derivative[[i+1]]){
+      strength[[i]] <- second.derivative[[i+1]] - first.derivative[[i+1]]
+      relative.strength[[i]] <- strength[[i]]/(i)
+      check <- 1
+    }
+  }
+  
+  if(check == 0){
+    index <- which.max(dist_to_line)
+  }else{
+    index <- which.max(relative.strength)
+  }
+  
+  
+  return(index)
+}
+
+
+print.cluster.index.fig <- function(cluster.index){
+  plot(cluster.std, cluster.index[,1],  type="o",  col="blue",  lty=1, ylim=c(0,1), ylab="Index Value" )
+  points(cluster.std, cluster.index[,2], col="red")
+  lines(cluster.std, cluster.index[,2], col="red",lty=2)
+  points(cluster.std, cluster.index[,3], col="green")
+  lines(cluster.std, cluster.index[,3], col="green",lty=3)
+  points(cluster.std, cluster.index[,4], col="yellow")
+  lines(cluster.std, cluster.index[,4], col="yellow",lty=4)
+  points(cluster.std, cluster.index[,5], col="gray")
+  lines(cluster.std, cluster.index[,5], col="gray",lty=5)
+  legend(0.3,0.5,legend=c("precision","recall","jaccard","rand","folkes_mallows"), col=c("blue","red","green","yellow","gray"), lty=c(1,2,3,4,5), ncol=1)
+}
+
+
+dist2d <- function(a,b,c) {
+ v1 <- b - c
+ v2 <- a - b
+ m1 <- cbind(v1,v2)
+ d <- abs(det(m1))/sqrt(sum(v1*v1))
+} 
+
+```
+
+
+
+
+new.samples <- Y.samples[1:1232]
+save(new.samples, Y.labels, file = "D:/dissertacao/10_17_Y1.RData")
+
+
+```{r}
+
+for (i in 1:number.of.test){
+  print("--------------------------------")
+  print(paste0("precision: ", Mofa.cluster.index[[i]]$precision))
+  print(paste0("recall: ", Mofa.cluster.index[[i]]$recall))
+  print(paste0("jaccard: ", Mofa.cluster.index[[i]]$jaccard))
+  print(paste0("rand: ", Mofa.cluster.index[[i]]$rand))
+  print(paste0("folkes_mallows: ", Mofa.cluster.index[[i]]$folkes_mallows))
+}
+
+for (i in 1:number.of.test){
+  Mofa.real.index[[i]]$precision
+  Mofa.real.index[[i]]$recall
+  Mofa.real.index[[i]]$jaccard
+  Mofa.real.index[[i]]$rand
+  Mofa.real.index[[i]]$folkes_mallows
+}
+
+```
+
+
+
+
+
+repl_python()
+```{python}
+
+from sklearn.datasets import make_blobs
+from sklearn.cluster import KMeans
+import random
+import math
+
+def Cluster_print(cluster):
+  n_cluster = len(cluster)
+  for i in range(n_cluster):
+    print("Cluster number:", i+1, " contains", len(cluster[i]), "elements.")
+
+random.seed(212)
+# Make features and targets with 500 samples,
+latent = list()
+label = list()
+features, target = make_blobs(n_samples = 50, n_features = 2, centers = 4, cluster_std = 1, shuffle = True, random_state=0)
+latent.append(features)
+label.append(target)
+features, target = make_blobs(n_samples = 50, n_features = 5, centers = 4, cluster_std = 0.65, shuffle = True, random_state=0)
+latent.append(features)
+label.append(target)
+features, target = make_blobs(n_samples = 100, n_features = 15, centers = 5, cluster_std = 0.65, shuffle = True, random_state=0)
+latent.append(features)
+label.append(target)
+
+clusters = 4
+kmeans = KMeans(n_clusters=clusters, random_state=None).fit(features)
+result_label = kmeans.labels_
+
+#C is a list of vectors, that each vector contains the index of each cluster element
+C = list()
+for i in range(clusters):
+  C_i = []
+  for j in range(result_label.shape[0]):
+    if(result_label[j] == (i+1)):
+      C_i.append(j)
+  
+  C.append(C_i)
+
+Cluster_print(C)
+
+```
+
+
+get python variables
+```{r}
+latent <- py$latent
+labels <- py$label
+
+```
+
+
+
+```{r}
+#normalization of list of Z
+simdata <- py$latent
+for (l in 1:length(simdata)){
+  simdata[[l]]<- scale(simdata[[l]])
+}
+
+
+#bin <- cbind(simdata[[1]][,4],simdata[[1]][,2])
+#plot(bin, xlab = "Latent factor 4", ylab = "Latent factor 2")
+
+
+for (l in 1:dim(simdata[[1]])[2]){
+  den <- density(simdata[[1]][,l])
+  plotname <- paste("Distribuition of feature ", l) 
+  plot(main = plotname, den)
+}
+
+```
+
+
+kmeans
+```{r}
+library(cluster)
+library(fpc)
+
+k.result <- kmeans(simdata[[1]], 4, nstart = 10)
+plotcluster(simdata[[1]], k.result$cluster, xlab = "Latent factor 1", ylab = "Latent factor 2")
+
+
+
+```
+
+
+make simulated data function
+
+
+n_views = 3
+n_features = 100 
+n_samples = 50 
+n_factors = 5
+likelihood = "gaussian"
+
+
+```{r}
+
+
+makeSimData <- function (n_views = 3, n_features = 100, n_samples = 50, n_factors = 5, 
+    likelihood = "gaussian", DZ = NULL)
+{
+    if (!all(likelihood %in% c("gaussian", "bernoulli", "poisson"))) 
+        stop("Liklihood not implemented: Use either gaussian, bernoulli or poisson")
+    if (length(likelihood) == 1) 
+        likelihood <- rep(likelihood, n_views)
+    if (!length(likelihood) == n_views) 
+        stop("Likelihood needs to be a single string or matching the number of views!")
+    #latent factors
+    
+    if(length(DZ)==0){
+      Z <- matrix(rnorm(n_factors * n_samples, 0, 1), nrow = n_samples, ncol = n_factors)
+    }else{
+      Z <- DZ
+    }
+    
+    
+    theta <- 0.5
+    alpha <- sapply(1:n_factors, function(fc) {
+        active_vw <- sample(1:n_views, 1)
+        alpha_fc <- sample(c(1, 1000), n_views, replace = TRUE)
+        if (all(alpha_fc == 1000)) 
+            alpha_fc[active_vw] <- 1
+        alpha_fc
+    })
+    alpha <- t(alpha)
+    
+    #S- lista matrix de 1 e 0
+    S <- lapply(1:n_views, function(vw) matrix(rbinom(n_features * 
+        n_factors, 1, theta), nrow = n_features, ncol = n_factors))
+    
+    #list of matrix W with normal distribuition, mean=0, and sd = 1/alpha
+    W <- lapply(1:n_views, function(vw) sapply(1:n_factors, function(fc) rnorm(n_features, 
+        0, sqrt(1/alpha[fc, vw]))))
+    tau <- 10
+    
+    
+    mu <- lapply(1:n_views, function(vw) Z %*% t(S[[vw]] * W[[vw]]))
+    
+    
+    data <- lapply(1:n_views, function(vw) {
+        lk <- likelihood[vw]
+        if (lk == "gaussian") {
+            dd <- t(mu[[vw]] + rnorm(length(mu[[vw]]), 0, sqrt(1/tau)))
+        }
+        else if (lk == "poisson") {
+            term <- log(1 + exp(mu[[vw]]))
+            dd <- t(apply(term, 2, function(tt) rpois(length(tt), 
+                tt)))
+        }
+        else if (lk == "bernoulli") {
+            term <- 1/(1 + exp(-mu[[vw]]))
+            dd <- t(apply(term, 2, function(tt) rbinom(length(tt), 
+                1, tt)))
+        }
+        colnames(dd) <- paste0("sample_", 1:ncol(dd))
+        rownames(dd) <- paste0("feature", 1:nrow(dd))
+        dd
+    })
+    names(data) <- paste0("view_", 1:n_views)
+    return(data)
+}
+
+
+```
+
+
+
+Data transformation, Z to Y
+```{r}
+
+set.seed(1234)
+simulated.data <- list()
+simulated.data[[1]] <- makeSimData(n_views = 3, n_features = 20, n_samples = 50, n_factors = 2, likelihood = "gaussian", DZ = simdata[[1]])
+simulated.data[[2]] <- makeSimData(n_views = 3, n_features = 100, n_samples = 50, n_factors = 5, likelihood = c("gaussian", "poisson", "bernoulli"), DZ = simdata[[2]])
+simulated.data[[3]] <- makeSimData(n_views = 3, n_features = 200, n_samples = 100, n_factors = 15, likelihood = "gaussian", DZ = simdata[[3]])
+
+
+
+
+```
+
+
+
+
+```{r}
+#library(MOFAtools)
+library(MOFA)
+
+#filtra variaveis com varianca inferior a 1%
+processed.data <- list()
+for (l in 1:length(simulated.data)){
+  processed.data[[l]] <- remove.Zero.varience(simulated.data[[l]], 0.01)
+}
+
+
+#MOFAobject <- createMOFAobject(simulated.data[[1]])
+
+MOFAobject <- createMOFAobject(processed.data[[1]])
+MOFAobject
+
+plotDataOverview(MOFAobject)
+```
+
+
+
+```{r}
+for(feature in 1:dim(simulated.data$view_1)[1]){
+  print(paste("feature number:", feature))
+  den <- density(simulated.data$view_1[feature,])
+  plot(den)
+}
+
+```
+
+
+
+```{r}
+TrainOptions <- getDefaultTrainOptions()
+TrainOptions
+ModelOptions <- getDefaultModelOptions(MOFAobject)
+ModelOptions
+DataOptions <- getDefaultDataOptions()
+DataOptions
+
+
+TrainOptions$DropFactorThreshold <- 0.01
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+n_inits <- 10
+MOFAlist <- lapply(seq_len(n_inits), function(it) {
+  
+  TrainOptions$seed <- 2018
+  
+  MOFAobject <- prepareMOFA(
+  MOFAobject, 
+  DataOptions = DataOptions,
+  ModelOptions = ModelOptions,
+  TrainOptions = TrainOptions
+)
+  
+  runMOFA(MOFAobject)
+})
+
+```
+
+
+
+
+```{r}
+compareModels(MOFAlist)
+```
+
+
+```{r}
+compareFactors(MOFAlist)
+```
+
+
+
+```{r}
+MOFAobject <- selectModel(MOFAlist, plotit = FALSE)
+MOFAobject
+```
+
+
+
+
+downstream analysis
+
+```{r}
+plotVarianceExplained(MOFAobject)
+```
+
+latent variables
+```{r}
+
+latentZmofa <- MOFAobject@Expectations[["Z"]]
+for(feature in 1:dim(latentZmofa)[2]){
+  print(paste("feature number:", feature))
+  den <- density(latentZmofa[,feature])
+  plot(den)
+}
+
+```
+
+
+
+
+```{r}
+library("clusterCrit")
+clusterMofa <- kmeans(latentZmofa, 4, nstart = 25)
+clusterMofa$cluster
+clusterRef <- as.integer(py$target)
+
+
+clusterCrteria <- extCriteria(clusterMofa$cluster, clusterRef, "all")
+clusterCrteria$precision
+clusterCrteria$recall
+clusterCrteria$jaccard
+clusterCrteria$rand
+clusterCrteria$folkes_mallows
+
+```
+
+
+
+
+```{r}
+k.result <- kmeans(simdata[[1]], 4, nstart = 10)
+plotcluster(simdata[[1]], k.result$cluster, xlab = "Latent factor 1", ylab = "Latent factor 2")
+
+plotcluster(latentZmofa, clusterMofa$cluster, xlab = "Latent factor 1", ylab = "Latent factor 2")
+
+
+```
+
+
+
+
+#é necessario correr com repl_python() para versoes de rstudio < 1.24
+
+```{python}
+
+
+```
+
+
+
+
+iClusterPlus
+
+Note:
+-the matrix used for functions are suposed to be samples on row and features on coluns, different from MOFA
+
+
+
+
+```{r}
+library(iClusterPlus)
+library(GenomicRanges)
+library(gplots)
+library(lattice)
+
+```
+
+
+
+```{r}
+
+
+
+
+for(k in 1:8){
+  cv.fit = tune.iClusterPlus(cpus=1,dt1=t(processed.data[[1]]$view_1),dt2=t(processed.data[[1]]$view_2),dt3=t(processed.data[[1]]$view_3),
+  type=c("gaussian","gaussian","gaussian"),K=k,n.lambda=185,
+  scale.lambda=c(1,1,1),maxiter=20)
+  save(cv.fit, file=paste("cv.fit.k",k,".Rdata",sep=""))
+}
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+output=alist()
+
+files=grep("cv.fit",dir())
+
+for(i in 1:length(files)){
+  load(dir()[files[i]])
+  output[[i]]=cv.fit
+  
+}
+
+nLambda = nrow(output[[1]]$lambda)
+nK = length(output)
+
+BIC = getBIC(output)
+devR = getDevR(output)
+
+
+
+```
+
+
+
+
+```{r}
+
+minBICid = apply(BIC,2,which.min)
+
+devRatMinBIC = rep(NA,nK)
+
+for(i in 1:nK){
+  devRatMinBIC[i] = devR[minBICid[i],i]
+}
+
+
+
+
+```
+
+
+```{r}
+
+plot(1:(nK+1),c(0,devRatMinBIC),type="b",xlab="Number of clusters (K+1)", ylab="%Explained Variation")
+
+```
+
+
+
+```{r}
+
+clusters=getClusters(output)
+rownames(clusters)=rownames(t(simulated.data$view_1))
+colnames(clusters)=paste("K=",2:(length(output)+1),sep="")
+
+
+
+
+#write.table(clusters, file="clusterMembership.txt",sep='\t',quote=F)
+
+k=3
+best.cluster=clusters[,k]
+best.fit=output[[k]]$fit[[which.min(BIC[,k])]]
+
+clusterCrteria <- extCriteria(best.cluster, clusterRef, "all")
+print("Precision:",clusterCrteria$precision)
+clusterCrteria$recall
+clusterCrteria$jaccard
+clusterCrteria$rand
+clusterCrteria$folkes_mallows
+
+best.lantent <- best.fit$meanZ
+rownames(best.lantent) <- rownames(t(simulated.data$view_1))
+for(feature in 1:dim(best.lantent)[2]){
+  print(paste("feature number:", feature))
+  den <- density(best.lantent[,feature])
+  plot(den)
+}
+
+
+
+```
+
+
+
+
+
+
+```{r}
+W <- best.fit$beta
+
+for (l in 1:length(W)){
+  rownames(W[[l]]) <- rownames(simulated.data$view_1)
+  colnames(W[[l]]) <- c("lf1","lf2","lf3","lf4","lf5")
+}
+
+
+
+
+#lista com pesos de cada variave em difenrentes view na latent variable (nao funciona quando tem features difenrentes em cada view)
+fw <- list()
+for (l in 1:dim(W[[1]])[2]){
+  fw[[l]] <- matrix(data = 1:dim(W[[1]])[1], nrow = dim(W[[1]])[1], ncol = 1)  
+  for (v in 1:length(W)){
+    fw[[l]] <- cbind(fw[[l]], W[[v]][,l])
+  }
+  fw[[l]]<-fw[[l]][,-1]
+  rownames(fw[[l]]) <- rownames(simulated.data$view_1)
+}
+
+
+#lista com pesos de cada lf em cada view (cumprimento total=v*f)
+fwl <- list()
+
+i <- 0
+for (l in 1:dim(W[[1]])[2]){
+  for (v in 1:length(W)){
+    i <- i + 1 
+    fwl[[i]] <- W[[v]][,l]
+  }
+}
+
+
+#remove 0 weight features
+fwl <- lapply(fwl, function(x) {x[x!=0]})
+
+#sort feature weights
+fwl <- lapply(fwl, function(x) {x[order(abs(x), decreasing = TRUE)]})
+
+
+
+fwl[[1]][order(abs(fwl[[1]]), decreasing = TRUE)]
+
+
+
+
+
+
+
+
+W1 <- best.fit$beta[[1]]
+heatmap(W1)
+
+
+
+```
+
+
+
+
+Cluster result figure
+
+```{r}
+library(condformat)
+
+
+smoke <- matrix(c(51,43,22,92,28,21,68,22,9),ncol=3,byrow=TRUE)
+colnames(smoke) <- c("High","Low","Middle")
+rownames(smoke) <- c("current","former","never")
+smoke <- as.table(smoke)
+smoke
+
+```
+
+
